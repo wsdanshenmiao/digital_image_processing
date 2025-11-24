@@ -22,6 +22,13 @@ struct Color
         b = b + other.b;
         return *this;
     }
+    Color& operator-=(const Color& other) 
+    {
+        r = r - other.r;
+        g = g - other.g;
+        b = b - other.b;
+        return *this;
+    }
     Color& operator/=(float divisor) 
     {
         if (divisor != 0) r = r / divisor;
@@ -49,6 +56,12 @@ struct Color
         result /= divisor;
         return result;
     }
+    Color operator-(const Color& other) const
+    {
+        Color result = *this;
+        result -= other;
+        return result;
+    }
     Color operator*(float multiplier) const
     {
         Color result = *this;
@@ -58,6 +71,11 @@ struct Color
     
     bool operator==(const Color& other) const = default;
 };
+
+Color abs(const Color& color) 
+{
+    return Color{std::abs(color.r), std::abs(color.g), std::abs(color.b)};
+}
 
 int main() 
 {
@@ -81,12 +99,19 @@ int main()
         | std::ranges::to<std::vector>();
 
     // auto result = dsm::image_filter::domain_average1d(img_vector, 5);
-    auto result = dsm::image_filter::domain_average2d(img_vector, width, height, 5);
+    // auto result = dsm::image_filter::domain_average2d(img_vector, width, height, 5);
     // auto result = dsm::image_filter::median_filter1d(img_vector, 5, [](const Color& a, const Color& b) {
     //     float luminance_a = 0.299f * a.r + 0.587f * a.g + 0.114f * a.b;
     //     float luminance_b = 0.299f * b.r + 0.587f * b.g + 0.114f * b.b;
     //     return luminance_a < luminance_b;
     // });
+    // auto result = dsm::image_filter::median_filter2d(img_vector, width, height, 5, 
+    //     [](const Color& a, const Color& b) {
+    //     float luminance_a = 0.299f * a.r + 0.587f * a.g + 0.114f * a.b;
+    //     float luminance_b = 0.299f * b.r + 0.587f * b.g + 0.114f * b.b;
+    //     return luminance_a < luminance_b;
+    // });
+    auto result = dsm::image_filter::gradient_filter1d(img_vector);
 
     std::vector<uint8_t> output_data = result
         | std::views::transform([](const Color& color) {
