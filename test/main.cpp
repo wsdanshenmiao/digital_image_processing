@@ -22,12 +22,18 @@ struct Color
         b = b + other.b;
         return *this;
     }
-
     Color& operator/=(float divisor) 
     {
         if (divisor != 0) r = r / divisor;
         if (divisor != 0) g = g / divisor;
         if (divisor != 0) b = b / divisor;
+        return *this;
+    }
+    Color& operator*=(float multiplier) 
+    {
+        r = r * multiplier;
+        g = g * multiplier;
+        b = b * multiplier;
         return *this;
     }
 
@@ -37,11 +43,16 @@ struct Color
         result += other;
         return result;
     }
-
     Color operator/(float divisor) const
     {
         Color result = *this;
         result /= divisor;
+        return result;
+    }
+    Color operator*(float multiplier) const
+    {
+        Color result = *this;
+        result *= multiplier;
         return result;
     }
     
@@ -52,7 +63,9 @@ int main()
 {
     int width, height, components;
     int channels = 3;
-    stbi_uc* img_data= stbi_load("asset/madoka_homura.jpg", &width, &height, &components, channels);
+    std::string filename = "raytracing";
+    auto filepath = "asset/" + filename + ".png";
+    stbi_uc* img_data= stbi_load(filepath.c_str(), &width, &height, &components, channels);
     if (img_data == nullptr) 
         return -1;
     
@@ -67,8 +80,13 @@ int main()
             return Color{r, g, b};}) 
         | std::ranges::to<std::vector>();
 
-    // auto result = dsm::image_filter::domain_average1d(img_vector10);
+    // auto result = dsm::image_filter::domain_average1d(img_vector, 5);
     auto result = dsm::image_filter::domain_average2d(img_vector, width, height, 5);
+    // auto result = dsm::image_filter::median_filter1d(img_vector, 5, [](const Color& a, const Color& b) {
+    //     float luminance_a = 0.299f * a.r + 0.587f * a.g + 0.114f * a.b;
+    //     float luminance_b = 0.299f * b.r + 0.587f * b.g + 0.114f * b.b;
+    //     return luminance_a < luminance_b;
+    // });
 
     std::vector<uint8_t> output_data = result
         | std::views::transform([](const Color& color) {
