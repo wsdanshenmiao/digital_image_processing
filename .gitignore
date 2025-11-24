@@ -4,6 +4,8 @@
 .vscode/
 .xmake
 bin/
+vsxmake2022/
+build/
 
 # Prerequisites
 *.d
