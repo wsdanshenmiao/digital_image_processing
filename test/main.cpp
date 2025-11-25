@@ -78,13 +78,21 @@ Color abs(const Color& color)
     return Color{std::abs(color.r), std::abs(color.g), std::abs(color.b)};
 }
 
+Color max(const Color& a, const Color& b)
+{
+    return Color{std::max(a.r, b.r), std::max(a.g, b.g), std::max(a.b, b.b)};
+}
+
 int main() 
 {
     int width, height, components;
     int channels = 3;
-    std::string filename = "madoka_homura";
-    std::string suffix = ".jpg";
-    auto filepath = "asset/" + filename + suffix;
+    std::string mhfilename = "madoka_homura";
+    std::string rtfilename = "raytracing";
+    auto selected_filename = mhfilename;
+    std::string suffixjpg = ".jpg";
+    std::string suffixpng = ".png";
+    auto filepath = "asset/" + selected_filename + suffixjpg;
     stbi_uc* img_data= stbi_load(filepath.c_str(), &width, &height, &components, channels);
     if (img_data == nullptr) 
         return -1;
@@ -105,24 +113,24 @@ int main()
             auto lumi = col.r * 0.299f + col.g * 0.587f + col.b * 0.114f;
             return Color{lumi, lumi, lumi}; });
 
+    auto cmp_func = [](const Color& a, const Color& b) {
+        float luminance_a = 0.299f * a.r + 0.587f * a.g + 0.114f * a.b;
+        float luminance_b = 0.299f * b.r + 0.587f * b.g + 0.114f * b.b;
+        return luminance_a < luminance_b;
+    };
+
     // auto result = dsm::image_filter::domain_average_filter1d(img_vector, 5);
     // auto result = dsm::image_filter::domain_average_filter2d(img_vector, width, height, 5);
-    // auto result = dsm::image_filter::median_filter1d(img_vector, 5, [](const Color& a, const Color& b) {
-    //     float luminance_a = 0.299f * a.r + 0.587f * a.g + 0.114f * a.b;
-    //     float luminance_b = 0.299f * b.r + 0.587f * b.g + 0.114f * b.b;
-    //     return luminance_a < luminance_b;
-    // });
-    // auto result = dsm::image_filter::median_filter2d(img_vector, width, height, 5, 
-    //     [](const Color& a, const Color& b) {
-    //     float luminance_a = 0.299f * a.r + 0.587f * a.g + 0.114f * a.b;
-    //     float luminance_b = 0.299f * b.r + 0.587f * b.g + 0.114f * b.b;
-    //     return luminance_a < luminance_b;
-    // });
+    // auto result = dsm::image_filter::median_filter1d(img_vector, 5, cmp_func);
+    // auto result = dsm::image_filter::median_filter2d(img_vector, width, height, 5, cmp_func);
     // auto result = dsm::image_filter::gradient_filter1d(img_vector);
     // auto result = dsm::image_filter::gradient_filter2d(luminance, width, height);
     // auto result = dsm::image_filter::robert_gradient_filter(luminance, width, height);
     // auto result = dsm::image_filter::laplacian_filter(img_vector, width, height);
-    auto result = dsm::image_filter::directional_filter(img_vector, width, height, std::numbers::pi_v<float> / 4.0f);
+    // auto result = dsm::image_filter::directional_filter(img_vector, width, height, std::numbers::pi_v<float> / 4.0f);
+    // auto result = dsm::image_filter::sobel_filter(luminance, width, height, cmp_func);
+    // auto result = dsm::image_filter::prewitt_filter(luminance, width, height, cmp_func);
+    auto result = dsm::image_filter::kirsch_filter(luminance, width, height, cmp_func);
 
     std::vector<uint8_t> output_data = result
         | std::views::transform([](const Color& color) {
@@ -133,7 +141,7 @@ int main()
         | std::views::join
         | std::ranges::to<std::vector>();
 
-    auto output_filepath = "asset/output/" + filename + ".png";
+    auto output_filepath = "asset/output/" + selected_filename + ".png";
     stbi_write_png(output_filepath.c_str(), width, height, channels, output_data.data(), width * channels);
 
     if(img_data != nullptr) {

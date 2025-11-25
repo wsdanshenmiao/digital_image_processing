@@ -9,16 +9,19 @@
 
 namespace dsm{
     template <typename T>
-    concept Addible = requires(T a, float b) { a + a; a += a; };
+    concept addible = requires(T a, float b) { a + a; a += a; };
     template <typename T>
-    concept Subtractable = requires(T a, float b) { a - a; a -= a; };
+    concept subtractable = requires(T a, float b) { a - a; a -= a; };
     template <typename T>
-    concept Multiplicable = requires(T a, float b) { a * b; a *= b; };
+    concept multiplicable = requires(T a, float b) { a * b; a *= b; };
     template <typename T>
-    concept Divisible = requires(T a, float b) { a / b; a /= b; };
+    concept divisible = requires(T a, float b) { a / b; a /= b; };
 
     template <typename T>
-    concept MultiFloat = requires(T a, float b) { a * b; a *= b; };
+    concept multi_float = requires(T a, float b) { a * b; a *= b; };
+
+    template <typename T>
+    concept addible_and_multi_float = addible<T> && multi_float<T>;
 
     class image_filter
     {
@@ -26,13 +29,11 @@ namespace dsm{
 
     public:
         template <std::ranges::random_access_range Container> requires 
-            Addible<std::ranges::range_value_t<Container>> && 
-            MultiFloat<std::ranges::range_value_t<Container>>
+            addible_and_multi_float<std::ranges::range_value_t<Container>>
         static auto domain_average_filter1d(Container&& input, int radius);
         
         template <std::ranges::random_access_range Container> requires 
-            Addible<std::ranges::range_value_t<Container>> && 
-            MultiFloat<std::ranges::range_value_t<Container>>
+            addible_and_multi_float<std::ranges::range_value_t<Container>>
         static auto domain_average_filter2d(Container&& input, size_t width, size_t height, int radius);
 
         template<std::ranges::random_access_range Container, typename Comparator = std::ranges::less>
@@ -42,28 +43,38 @@ namespace dsm{
         static auto median_filter2d(Container&& input, size_t width, size_t height, int radius, Comparator&& comp = Comparator{});
     
         template<std::ranges::random_access_range Container> requires
-            Subtractable<std::ranges::range_value_t<Container>>
+            subtractable<std::ranges::range_value_t<Container>>
         static auto gradient_filter1d(Container&& input);
 
         template<std::ranges::random_access_range Container> requires
-            Subtractable<std::ranges::range_value_t<Container>> &&
-            Addible<std::ranges::range_value_t<Container>>
+            subtractable<std::ranges::range_value_t<Container>> &&
+            addible<std::ranges::range_value_t<Container>>
         static auto gradient_filter2d(Container&& input, size_t width, size_t height);
 
         template<std::ranges::random_access_range Container> requires
-            Subtractable<std::ranges::range_value_t<Container>> &&
-            Addible<std::ranges::range_value_t<Container>>
+            subtractable<std::ranges::range_value_t<Container>> &&
+            addible<std::ranges::range_value_t<Container>>
         static auto robert_gradient_filter(Container&& input, size_t width, size_t height);
 
         template<std::ranges::random_access_range Container> requires
-            Addible<std::ranges::range_value_t<Container>> &&
-            MultiFloat<std::ranges::range_value_t<Container>>
+            addible_and_multi_float<std::ranges::range_value_t<Container>>
         static auto laplacian_filter(Container&& input, size_t width, size_t height);
 
         template<std::ranges::random_access_range Container> requires
-            Addible<std::ranges::range_value_t<Container>> &&
-            MultiFloat<std::ranges::range_value_t<Container>>
+            addible_and_multi_float<std::ranges::range_value_t<Container>>
         static auto directional_filter(Container&& input, size_t width, size_t height, float angle);
+        
+        template<std::ranges::random_access_range Container, typename Comparator = std::ranges::less> requires
+            addible_and_multi_float<std::ranges::range_value_t<Container>>
+        static auto sobel_filter(Container&& input, size_t width, size_t height, Comparator&& comp = Comparator{});
+        
+        template<std::ranges::random_access_range Container, typename Comparator = std::ranges::less> requires
+            addible_and_multi_float<std::ranges::range_value_t<Container>>
+        static auto prewitt_filter(Container&& input, size_t width, size_t height, Comparator&& comp = Comparator{});
+
+        template<std::ranges::random_access_range Container, typename Comparator = std::ranges::less> requires
+            addible_and_multi_float<std::ranges::range_value_t<Container>>
+        static auto kirsch_filter(Container&& input, size_t width, size_t height, Comparator&& comp = Comparator{});
 
     private:
         template<std::ranges::random_access_range Container, typename Func>
@@ -71,11 +82,13 @@ namespace dsm{
     
         template<std::ranges::random_access_range Container, typename Func>
         static auto filter_kernel(Container&& input, size_t width, size_t height, int radius, Func&& func);
+        
+        template<std::ranges::random_access_range Container, typename Func>
+        static auto filter_kernel(Container&& input, size_t width, size_t height, int radius, const std::span<float> kernel);
     };
     
     template <std::ranges::random_access_range Container> requires 
-        Addible<std::ranges::range_value_t<Container>> && 
-        MultiFloat<std::ranges::range_value_t<Container>>
+        addible_and_multi_float<std::ranges::range_value_t<Container>>
     inline auto image_filter::domain_average_filter1d(Container&& input, int radius)
     {
         using namespace std;
@@ -108,23 +121,14 @@ namespace dsm{
     }
 
     template <std::ranges::random_access_range Container> requires
-        Addible<std::ranges::range_value_t<Container>> && 
-        MultiFloat<std::ranges::range_value_t<Container>>
+        addible_and_multi_float<std::ranges::range_value_t<Container>>
     inline auto image_filter::domain_average_filter2d(Container &&input, size_t width, size_t height, int radius)
     {
-        float inv_size = 1.f / static_cast<float>((2 * radius + 1) * (2 * radius + 1));
-        return filter_kernel(input, width, height, radius, 
-            [inv_size](const auto& kernel_values) {
-                using Subrange = std::ranges::range_value_t<decltype(kernel_values)>;
-                using T = std::ranges::range_value_t<Subrange>;
-                using Type = std::conditional_t<std::is_integral_v<T> && sizeof(T) < sizeof(int), int, T>;
-                Type sum = Type{};
-                for(const auto& val : kernel_values | std::views::join) {
-                    sum += static_cast<Type>(val);
-                }
-                sum *= inv_size;
-                return static_cast<T>(sum);
-            });
+        size_t kernel_size = (2 * radius + 1) * (2 * radius + 1);
+        float inv_size = 1.f / static_cast<float>(kernel_size);
+        static std::vector<float> kernel{};
+        kernel.resize(kernel_size, inv_size);
+        return filter_kernel(input, width, height, radius, kernel);
     }
     
     template<std::ranges::random_access_range Container, typename Comparator>
@@ -160,7 +164,7 @@ namespace dsm{
     {
         size_t kernel_size = (2 * radius + 1) * (2 * radius + 1);
         return filter_kernel(input, width, height, radius, 
-            [kernel_size, comp](const auto& kernel_values) {
+            [kernel_size, comp = std::forward<Comparator>(comp)](const auto& kernel_values) {
                 using namespace std;
                 auto joined_kernel = kernel_values | views::join;
                 auto kernel_begin = ranges::begin(joined_kernel);
@@ -177,7 +181,7 @@ namespace dsm{
     }
     
     template <std::ranges::random_access_range Container> requires
-        Subtractable<std::ranges::range_value_t<Container>>
+        subtractable<std::ranges::range_value_t<Container>>
     inline auto image_filter::gradient_filter1d(Container &&input)
     {
         using namespace std;
@@ -199,8 +203,8 @@ namespace dsm{
     }
     
     template <std::ranges::random_access_range Container> requires
-        Subtractable<std::ranges::range_value_t<Container>> &&
-        Addible<std::ranges::range_value_t<Container>>
+        subtractable<std::ranges::range_value_t<Container>> &&
+        addible<std::ranges::range_value_t<Container>>
     inline auto image_filter::gradient_filter2d(Container &&input, size_t width, size_t height)
     {
         return filter_kernel2(std::forward<Container>(input), width, height,
@@ -214,8 +218,8 @@ namespace dsm{
     }
 
     template<std::ranges::random_access_range Container> requires
-        Subtractable<std::ranges::range_value_t<Container>> &&
-        Addible<std::ranges::range_value_t<Container>>
+        subtractable<std::ranges::range_value_t<Container>> &&
+        addible<std::ranges::range_value_t<Container>>
     inline auto image_filter::robert_gradient_filter(Container&& input, size_t width, size_t height)
     {
         return filter_kernel2(std::forward<Container>(input), width, height,
@@ -230,49 +234,101 @@ namespace dsm{
     }
 
     template <std::ranges::random_access_range Container> requires
-        Addible<std::ranges::range_value_t<Container>> &&
-        MultiFloat<std::ranges::range_value_t<Container>>
+        addible_and_multi_float<std::ranges::range_value_t<Container>>
     inline auto image_filter::laplacian_filter(Container &&input, size_t width, size_t height)
     {
-        return filter_kernel(std::forward<Container>(input), width, height, 1,
-            [](const auto& kernel_values){
-                using Subrange = std::ranges::range_value_t<decltype(kernel_values)>;
-                using T = std::ranges::range_value_t<Subrange>;
-                using Type = std::conditional_t<std::is_integral_v<T> && sizeof(T) < sizeof(int), int, T>;
-                static std::array<float, 9> kernel = { 0, -1, 0, -1, 4, -1, 0, -1, 0 };
-                Type sum{};
-                for(const auto& [index, val] : kernel_values | std::views::join | std::views::enumerate) {
-                    sum += val * kernel[index];
-                }
-                return static_cast<T>(sum);
-            });
+        static std::array<float, 9> kernel = { 0, -1, 0, -1, 4, -1, 0, -1, 0 };
+        return filter_kernel(std::forward<Container>(input), width, height, 1, kernel);
     }
 
     template<std::ranges::random_access_range Container> requires
-        Addible<std::ranges::range_value_t<Container>> &&
-        MultiFloat<std::ranges::range_value_t<Container>>
+        addible_and_multi_float<std::ranges::range_value_t<Container>>
     inline auto image_filter::directional_filter(Container &&input, size_t width, size_t height, float angle)
     {
+        constexpr static std::array<float, 9> kernel_xx = {1, -2, 1, 2, -4, 2, 1, -2, 1};
+        constexpr static std::array<float, 9> kernel_yy = {1, 2, 1, -2, -4, -2, 1, 2, 1};
+        constexpr static std::array<float, 9> kernel_xy = {-1, 0, 1, 0, 0, 0, 1, 0, -1};
         float cos_angle = std::cos(angle);
         float cos_angle_sq = cos_angle * cos_angle;
         float sin_angle = std::sqrt(1 - cos_angle_sq);
-        return filter_kernel(std::forward<Container>(input), width, height, 1,
-            [=](const auto& kernel_values){
-                using Subrange = std::ranges::range_value_t<decltype(kernel_values)>;
-                using T = std::ranges::range_value_t<Subrange>;
-                using Type = std::conditional_t<std::is_integral_v<T> && sizeof(T) < sizeof(int), int, T>;
-                static std::array<float, 9> kernel_xx = {1, -2, 1, 2, -4, 2, 1, -2, 1};
-                static std::array<float, 9> kernel_yy = {1, 2, 1, -2, -4, -2, 1, 2, 1};
-                static std::array<float, 9> kernel_xy = {-1, 0, 1, 0, 0, 0, 1, 0, -1};
+        static std::array<float, 9> kernel;
+        for(size_t i = 0; i < 9; ++i) {
+            kernel[i] = kernel_xx[i] * cos_angle_sq +
+                        kernel_yy[i] * sin_angle * sin_angle +
+                        kernel_xy[i] * 2.0f * cos_angle * sin_angle;
+        }
+        return filter_kernel(std::forward<Container>(input), width, height, 1, kernel);
+    }
 
-                Type sum{};
-                for(const auto& [index, val] : kernel_values | std::views::join | std::views::enumerate) {
-                    float kernel = cos_angle_sq * kernel_xx[index]
-                        + sin_angle * sin_angle * kernel_yy[index]
-                        + 2 * sin_angle * cos_angle * kernel_xy[index];
-                    sum += val * kernel;
+    template <std::ranges::random_access_range Container, typename Comparator> requires
+        addible_and_multi_float<std::ranges::range_value_t<Container>>
+    inline auto image_filter::sobel_filter(Container &&input, size_t width, size_t height, Comparator&& comp)
+    {
+        return filter_kernel(std::forward<Container>(input), width, height, 1,
+            [comp = std::forward<Comparator>(comp)](const auto& kernel_values){
+                using namespace std;
+                using T = ranges::range_value_t<ranges::range_value_t<decltype(kernel_values)>>;
+                using Type = std::conditional_t<std::is_integral_v<T> && sizeof(T) < sizeof(int), int, T>;
+                constexpr static array<float, 9> kernel_gx = {-1, -2, -1, 0, 0, 0, 1, 2, 1};
+                constexpr static array<float, 9> kernel_gy = {-1, 0, 1, -2, 0, 2, -1, 0, 1};
+
+                Type gx{}, gy{};
+                for(const auto& [index, val] : kernel_values | views::join | views::enumerate) {
+                    gx += val * kernel_gx[index];
+                    gy += val * kernel_gy[index];
                 }
-                return static_cast<T>(sum);
+                return static_cast<T>(comp(gx, gy) ? gy : gx);
+            });
+    }
+
+    template <std::ranges::random_access_range Container, typename Comparator> requires
+        addible_and_multi_float<std::ranges::range_value_t<Container>>
+    inline auto image_filter::prewitt_filter(Container &&input, size_t width, size_t height, Comparator&& comp)
+    {
+        return filter_kernel(std::forward<Container>(input), width, height, 1,
+            [comp = std::forward<Comparator>(comp)](const auto& kernel_values){
+                using namespace std;
+                using T = ranges::range_value_t<ranges::range_value_t<decltype(kernel_values)>>;
+                using Type = std::conditional_t<std::is_integral_v<T> && sizeof(T) < sizeof(int), int, T>;
+                constexpr static array<float, 9> kernel_gx = {-1, -1, -1, 0, 0, 0, 1, 1, 1};
+                constexpr static array<float, 9> kernel_gy = {1, 0, -1, 1, 0, -1, 1, 0, -1};
+
+                Type gx{}, gy{};
+                for(const auto& [index, val] : kernel_values | views::join | views::enumerate) {
+                    gx += val * kernel_gx[index];
+                    gy += val * kernel_gy[index];
+                }
+                return static_cast<T>(comp(gx, gy) ? gy : gx);
+            });
+    }
+
+    template <std::ranges::random_access_range Container, typename Comparator> requires
+        addible_and_multi_float<std::ranges::range_value_t<Container>>
+    inline auto image_filter::kirsch_filter(Container &&input, size_t width, size_t height, Comparator&& comp)
+    {
+        return filter_kernel(std::forward<Container>(input), width, height, 1,
+            [comp = std::forward<Comparator>(comp)](const auto& kernel_values){
+                using namespace std;
+                using T = ranges::range_value_t<ranges::range_value_t<decltype(kernel_values)>>;
+                using Type = std::conditional_t<std::is_integral_v<T> && sizeof(T) < sizeof(int), int, T>;
+                constexpr static array<array<float, 9>, 8> kirsch_kernels = {
+                    array<float, 9>{ 5,  5,  5, -3,  0, -3, -3, -3, -3 },
+                    array<float, 9>{ 5,  5, -3,  5,  0, -3, -3, -3, -3 },
+                    array<float, 9>{ 5, -3, -3,  5,  0, -3,  5, -3, -3 },
+                    array<float, 9>{-3, -3, -3,  5,  0, -3,  5,  5, -3 },
+                    array<float, 9>{-3, -3, -3, -3,  0, -3,  5,  5,  5 },
+                    array<float, 9>{-3, -3, -3, -3,  0,  5, -3,  5,  5 },
+                    array<float, 9>{-3, -3,  5, -3,  0,  5, -3, -3,  5 },
+                    array<float, 9>{-3,  5,  5, -3,  0,  5, -3, -3, -3 }};
+
+                array<Type, 8> responses{};
+                auto pair_view = kernel_values | views::join | views::enumerate;
+                for(size_t k = 0; k < ranges::size(kirsch_kernels); ++k) {
+                    for(const auto& [index, val] : pair_view) {
+                        responses[k] += val * kirsch_kernels[k][index];
+                    }
+                }
+                return static_cast<T>(*ranges::max_element(responses, comp));
             });
     }
 
@@ -363,6 +419,22 @@ namespace dsm{
         return output;
     }
 
+    template <std::ranges::random_access_range Container, typename Func>
+    inline auto image_filter::filter_kernel(Container &&input, size_t width, size_t height, int radius, const std::span<float> kernel)
+    {
+        return filter_kernel(std::forward<Container>(input), width, height, 1,
+            [&kernel](const auto& kernel_values){
+                using Subrange = std::ranges::range_value_t<decltype(kernel_values)>;
+                using T = std::ranges::range_value_t<Subrange>;
+                using Type = std::conditional_t<std::is_integral_v<T> && sizeof(T) < sizeof(int), int, T>;
+
+                Type sum{};
+                for(const auto& [index, val] : kernel_values | std::views::join | std::views::enumerate) {
+                    sum += val * kernel[index];
+                }
+                return static_cast<T>(sum);
+            });
+    }
 }
 
 #endif
