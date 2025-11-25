@@ -118,7 +118,9 @@ int main()
     //     return luminance_a < luminance_b;
     // });
     // auto result = dsm::image_filter::gradient_filter1d(img_vector);
-    auto result = dsm::image_filter::gradient_filter2d(luminance, width, height);
+    // auto result = dsm::image_filter::gradient_filter2d(luminance, width, height);
+    // auto result = dsm::image_filter::robert_gradient_filter(luminance, width, height);
+    auto result = dsm::image_filter::laplacian_filter(img_vector, width, height);
 
     std::vector<uint8_t> output_data = result
         | std::views::transform([](const Color& color) {
