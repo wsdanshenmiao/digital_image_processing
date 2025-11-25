@@ -10,6 +10,7 @@
 #include <ranges>
 #include <vector>
 #include <algorithm>
+#include <numbers>
 
 struct Color
 {
@@ -120,7 +121,8 @@ int main()
     // auto result = dsm::image_filter::gradient_filter1d(img_vector);
     // auto result = dsm::image_filter::gradient_filter2d(luminance, width, height);
     // auto result = dsm::image_filter::robert_gradient_filter(luminance, width, height);
-    auto result = dsm::image_filter::laplacian_filter(img_vector, width, height);
+    // auto result = dsm::image_filter::laplacian_filter(img_vector, width, height);
+    auto result = dsm::image_filter::directional_filter(img_vector, width, height, std::numbers::pi_v<float> / 4.0f);
 
     std::vector<uint8_t> output_data = result
         | std::views::transform([](const Color& color) {

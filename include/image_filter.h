@@ -5,6 +5,7 @@
 #include <vector>
 #include <algorithm>
 #include <numeric>
+#include <cmath>
 
 namespace dsm{
     template <typename T>
@@ -16,6 +17,9 @@ namespace dsm{
     template <typename T>
     concept Divisible = requires(T a, float b) { a / b; a /= b; };
 
+    template <typename T>
+    concept MultiFloat = requires(T a, float b) { a * b; a *= b; };
+
     class image_filter
     {
     private:
@@ -23,12 +27,12 @@ namespace dsm{
     public:
         template <std::ranges::random_access_range Container> requires 
             Addible<std::ranges::range_value_t<Container>> && 
-            Multiplicable<std::ranges::range_value_t<Container>>
+            MultiFloat<std::ranges::range_value_t<Container>>
         static auto domain_average_filter1d(Container&& input, int radius);
         
         template <std::ranges::random_access_range Container> requires 
             Addible<std::ranges::range_value_t<Container>> && 
-            Multiplicable<std::ranges::range_value_t<Container>>
+            MultiFloat<std::ranges::range_value_t<Container>>
         static auto domain_average_filter2d(Container&& input, size_t width, size_t height, int radius);
 
         template<std::ranges::random_access_range Container, typename Comparator = std::ranges::less>
@@ -53,8 +57,13 @@ namespace dsm{
 
         template<std::ranges::random_access_range Container> requires
             Addible<std::ranges::range_value_t<Container>> &&
-            requires(std::ranges::range_value_t<Container> a, float b) { a * b; a *= b; }
+            MultiFloat<std::ranges::range_value_t<Container>>
         static auto laplacian_filter(Container&& input, size_t width, size_t height);
+
+        template<std::ranges::random_access_range Container> requires
+            Addible<std::ranges::range_value_t<Container>> &&
+            MultiFloat<std::ranges::range_value_t<Container>>
+        static auto directional_filter(Container&& input, size_t width, size_t height, float angle);
 
     private:
         template<std::ranges::random_access_range Container, typename Func>
@@ -66,7 +75,7 @@ namespace dsm{
     
     template <std::ranges::random_access_range Container> requires 
         Addible<std::ranges::range_value_t<Container>> && 
-        Multiplicable<std::ranges::range_value_t<Container>>
+        MultiFloat<std::ranges::range_value_t<Container>>
     inline auto image_filter::domain_average_filter1d(Container&& input, int radius)
     {
         using namespace std;
@@ -100,54 +109,22 @@ namespace dsm{
 
     template <std::ranges::random_access_range Container> requires
         Addible<std::ranges::range_value_t<Container>> && 
-        Multiplicable<std::ranges::range_value_t<Container>>
+        MultiFloat<std::ranges::range_value_t<Container>>
     inline auto image_filter::domain_average_filter2d(Container &&input, size_t width, size_t height, int radius)
     {
-        using namespace std;
-        using T = ranges::range_value_t<Container>;
-        using Type = std::conditional_t<std::is_integral_v<T> && sizeof(T) < sizeof(int), int, T>;
-
-        auto input_begin = ranges::begin(input);
-        std::vector<T> output{input_begin, ranges::end(input)};
-        if(ranges::size(output) < static_cast<size_t>((2 * radius + 1) * 2) || radius < 1){
-            return output;
-        }
-        auto input_view = input | views::chunk(width);
-        auto input_view_begin = ranges::begin(input_view);
-
-        // process rows
         float inv_size = 1.f / static_cast<float>((2 * radius + 1) * (2 * radius + 1));
-        auto end_row_it = ranges::prev(ranges::end(input_view), radius);
-        for(auto row_it = ranges::next(input_view_begin, radius); row_it != end_row_it; ++row_it) {
-            // distance from the current line to the beginning of the input view
-            auto dist_col = ranges::distance(input_view_begin, row_it);
-            auto row_begin = ranges::begin(*row_it);
-            for(auto it = ranges::next(row_begin, radius); 
-                it != ranges::prev(ranges::end(*row_it), radius); ++it) {
+        return filter_kernel(input, width, height, radius, 
+            [inv_size](const auto& kernel_values) {
+                using Subrange = std::ranges::range_value_t<decltype(kernel_values)>;
+                using T = std::ranges::range_value_t<Subrange>;
+                using Type = std::conditional_t<std::is_integral_v<T> && sizeof(T) < sizeof(int), int, T>;
                 Type sum = Type{};
-
-                // distance from the current element to the beginning of the line
-                auto dist_row = ranges::distance(row_begin, it);
-
-                std::vector<ranges::subrange<decltype(row_begin)>> kernel_lines{};
-                kernel_lines.reserve(radius * 2 + 1);
-                // collect each line in kernel
-                for(auto it_m = ranges::prev(row_it, radius); it_m <= ranges::next(row_it, radius); ++it_m) {
-                    auto begin_it_m = ranges::begin(*it_m);
-                    kernel_lines.emplace_back(ranges::next(begin_it_m, dist_row - radius),
-                        ranges::next(begin_it_m, dist_row + radius + 1));
-                }
-                auto kernel_line = kernel_lines | views::join;
-                for(const auto& val : kernel_line) {
+                for(const auto& val : kernel_values | std::views::join) {
                     sum += static_cast<Type>(val);
                 }
                 sum *= inv_size;
-                auto output_it = ranges::next(ranges::begin(output), dist_col * width + dist_row);
-                *output_it = static_cast<T>(sum);
-            }
-        }
-
-        return output;
+                return static_cast<T>(sum);
+            });
     }
     
     template<std::ranges::random_access_range Container, typename Comparator>
@@ -181,48 +158,22 @@ namespace dsm{
     template <std::ranges::random_access_range Container, typename Comparator>
     inline auto image_filter::median_filter2d(Container &&input, size_t width, size_t height, int radius, Comparator&& comp)
     {
-        using namespace std;
-        using T = ranges::range_value_t<Container>;
+        size_t kernel_size = (2 * radius + 1) * (2 * radius + 1);
+        return filter_kernel(input, width, height, radius, 
+            [kernel_size, comp](const auto& kernel_values) {
+                using namespace std;
+                auto joined_kernel = kernel_values | views::join;
+                auto kernel_begin = ranges::begin(joined_kernel);
 
-        std::vector<T> output{input.begin(), input.end()};
-        if(ranges::size(input) < static_cast<size_t>((2 * radius + 1) * (2 * radius + 1)) || radius < 1){
-            return output;
-        }
-
-        auto input_view = input | views::chunk(width);
-        auto end_row_it = ranges::prev(ranges::end(input_view), radius);
-        for(auto row_it = ranges::next(ranges::begin(input_view), radius); row_it != end_row_it; ++row_it) {
-            auto dist_col = ranges::distance(ranges::begin(input_view), row_it);
-            auto row_begin = ranges::begin(*row_it);
-            for(auto it = ranges::next(row_begin, radius); 
-                it != ranges::prev(ranges::end(*row_it), radius); ++it) {
-                auto dist_row = ranges::distance(row_begin, it);
-               
-                std::vector<ranges::subrange<decltype(row_begin)>> kernel_lines{};
-                kernel_lines.reserve(2 * radius + 1);
-                // collect each line in kernel
-                for(auto it_m = ranges::prev(row_it, radius); it_m <= ranges::next(row_it, radius); ++it_m) {
-                    auto begin_it_m = ranges::begin(*it_m);
-                    kernel_lines.emplace_back(ranges::next(begin_it_m, dist_row - radius),
-                        ranges::next(begin_it_m, dist_row + radius + 1));
-                }
-
-                auto kernel_values = kernel_lines | views::join;
-                auto kernel_begin = ranges::begin(kernel_values);
-                std::vector<size_t> indices(ranges::size(kernel_lines) * ranges::size(kernel_lines));
-                std::iota(ranges::begin(indices), ranges::end(indices), 0);
-
+                std::vector<size_t> indices(kernel_size);
+                ranges::iota(indices, 0);
                 auto mid_it = ranges::next(ranges::begin(indices), ranges::size(indices) / 2);
                 ranges::nth_element(indices, mid_it, [&](const auto& a, const auto& b) {
                     return comp(*ranges::next(kernel_begin, a), *ranges::next(kernel_begin, b));
                 });
 
-                auto output_it = ranges::next(ranges::begin(output), dist_col * width + dist_row);
-                *output_it = *ranges::next(kernel_begin, *mid_it);
-            }
-        }
-
-        return output;
+                return *ranges::next(kernel_begin, *mid_it);
+            });
     }
     
     template <std::ranges::random_access_range Container> requires
@@ -253,11 +204,11 @@ namespace dsm{
     inline auto image_filter::gradient_filter2d(Container &&input, size_t width, size_t height)
     {
         return filter_kernel2(std::forward<Container>(input), width, height,
-            [](const auto& neighbors) {
-                using It = std::ranges::range_value_t<decltype(neighbors)>;
+            [](const auto& kernel_values) {
+                using It = std::ranges::range_value_t<decltype(kernel_values)>;
                 using T = std::iter_value_t<It>;
-                T gx = abs(*neighbors[0] - *neighbors[1]);
-                T gy = abs(*neighbors[0] - *neighbors[2]);
+                T gx = abs(*kernel_values[0] - *kernel_values[1]);
+                T gy = abs(*kernel_values[0] - *kernel_values[2]);
                 return gx + gy;
             });
     }
@@ -268,30 +219,58 @@ namespace dsm{
     inline auto image_filter::robert_gradient_filter(Container&& input, size_t width, size_t height)
     {
         return filter_kernel2(std::forward<Container>(input), width, height,
-            [](const auto& neighbors) {
-                static_assert(std::ranges::size(neighbors) == 4, "Neighbors size must be 4.");
-                using It = std::ranges::range_value_t<decltype(neighbors)>;
+            [](const auto& kernel_values) {
+                static_assert(std::ranges::size(kernel_values) == 4, "Neighbors size must be 4.");
+                using It = std::ranges::range_value_t<decltype(kernel_values)>;
                 using T = std::iter_value_t<It>;
-                T gx = abs(*neighbors[0] - *neighbors[3]);
-                T gy = abs(*neighbors[1] - *neighbors[2]);
+                T gx = abs(*kernel_values[0] - *kernel_values[3]);
+                T gy = abs(*kernel_values[1] - *kernel_values[2]);
                 return gx + gy;
             });
     }
 
     template <std::ranges::random_access_range Container> requires
         Addible<std::ranges::range_value_t<Container>> &&
-        requires(std::ranges::range_value_t<Container> a, float b) { a * b; a *= b; }
+        MultiFloat<std::ranges::range_value_t<Container>>
     inline auto image_filter::laplacian_filter(Container &&input, size_t width, size_t height)
     {
         return filter_kernel(std::forward<Container>(input), width, height, 1,
-            [](const auto& neighbors){
-                using Subrange = std::ranges::range_value_t<decltype(neighbors)>;
+            [](const auto& kernel_values){
+                using Subrange = std::ranges::range_value_t<decltype(kernel_values)>;
                 using T = std::ranges::range_value_t<Subrange>;
                 using Type = std::conditional_t<std::is_integral_v<T> && sizeof(T) < sizeof(int), int, T>;
-                std::array<float, 9> kernel = { 0, -1, 0, -1, 4, -1, 0, -1, 0 };
+                static std::array<float, 9> kernel = { 0, -1, 0, -1, 4, -1, 0, -1, 0 };
                 Type sum{};
-                for(const auto& [index, val] : neighbors | std::views::join | std::views::enumerate) {
+                for(const auto& [index, val] : kernel_values | std::views::join | std::views::enumerate) {
                     sum += val * kernel[index];
+                }
+                return static_cast<T>(sum);
+            });
+    }
+
+    template<std::ranges::random_access_range Container> requires
+        Addible<std::ranges::range_value_t<Container>> &&
+        MultiFloat<std::ranges::range_value_t<Container>>
+    inline auto image_filter::directional_filter(Container &&input, size_t width, size_t height, float angle)
+    {
+        float cos_angle = std::cos(angle);
+        float cos_angle_sq = cos_angle * cos_angle;
+        float sin_angle = std::sqrt(1 - cos_angle_sq);
+        return filter_kernel(std::forward<Container>(input), width, height, 1,
+            [=](const auto& kernel_values){
+                using Subrange = std::ranges::range_value_t<decltype(kernel_values)>;
+                using T = std::ranges::range_value_t<Subrange>;
+                using Type = std::conditional_t<std::is_integral_v<T> && sizeof(T) < sizeof(int), int, T>;
+                static std::array<float, 9> kernel_xx = {1, -2, 1, 2, -4, 2, 1, -2, 1};
+                static std::array<float, 9> kernel_yy = {1, 2, 1, -2, -4, -2, 1, 2, 1};
+                static std::array<float, 9> kernel_xy = {-1, 0, 1, 0, 0, 0, 1, 0, -1};
+
+                Type sum{};
+                for(const auto& [index, val] : kernel_values | std::views::join | std::views::enumerate) {
+                    float kernel = cos_angle_sq * kernel_xx[index]
+                        + sin_angle * sin_angle * kernel_yy[index]
+                        + 2 * sin_angle * cos_angle * kernel_xy[index];
+                    sum += val * kernel;
                 }
                 return static_cast<T>(sum);
             });
@@ -329,13 +308,13 @@ namespace dsm{
                     *output_it = *ranges::prev(it);
                 }
                 else {
-                    std::array<decltype(it), 4> neighbors{
+                    std::array<decltype(it), 4> kernel_values{
                         it,
                         ranges::next(it),
                         ranges::next(ranges::begin(*next_row), dist_row),
                         ranges::next(ranges::begin(*next_row), dist_row + 1)
                     };
-                    *output_it = func(neighbors);
+                    *output_it = func(kernel_values);
                 }
             }
         }
