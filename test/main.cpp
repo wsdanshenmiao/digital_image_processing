@@ -81,8 +81,9 @@ int main()
 {
     int width, height, components;
     int channels = 3;
-    std::string filename = "raytracing";
-    auto filepath = "asset/" + filename + ".png";
+    std::string filename = "madoka_homura";
+    std::string suffix = ".jpg";
+    auto filepath = "asset/" + filename + suffix;
     stbi_uc* img_data= stbi_load(filepath.c_str(), &width, &height, &components, channels);
     if (img_data == nullptr) 
         return -1;
@@ -98,8 +99,13 @@ int main()
             return Color{r, g, b};}) 
         | std::ranges::to<std::vector>();
 
-    // auto result = dsm::image_filter::domain_average1d(img_vector, 5);
-    // auto result = dsm::image_filter::domain_average2d(img_vector, width, height, 5);
+    auto luminance = img_vector 
+        | std::views::transform([](const auto& col){
+            auto lumi = col.r * 0.299f + col.g * 0.587f + col.b * 0.114f;
+            return Color{lumi, lumi, lumi}; });
+
+    // auto result = dsm::image_filter::domain_average_filter1d(img_vector, 5);
+    // auto result = dsm::image_filter::domain_average_filter2d(img_vector, width, height, 5);
     // auto result = dsm::image_filter::median_filter1d(img_vector, 5, [](const Color& a, const Color& b) {
     //     float luminance_a = 0.299f * a.r + 0.587f * a.g + 0.114f * a.b;
     //     float luminance_b = 0.299f * b.r + 0.587f * b.g + 0.114f * b.b;
@@ -111,7 +117,8 @@ int main()
     //     float luminance_b = 0.299f * b.r + 0.587f * b.g + 0.114f * b.b;
     //     return luminance_a < luminance_b;
     // });
-    auto result = dsm::image_filter::gradient_filter1d(img_vector);
+    // auto result = dsm::image_filter::gradient_filter1d(img_vector);
+    auto result = dsm::image_filter::gradient_filter2d(luminance, width, height);
 
     std::vector<uint8_t> output_data = result
         | std::views::transform([](const Color& color) {
@@ -122,7 +129,8 @@ int main()
         | std::views::join
         | std::ranges::to<std::vector>();
 
-    stbi_write_png("asset/output/output.png", width, height, channels, output_data.data(), width * channels);
+    auto output_filepath = "asset/output/" + filename + ".png";
+    stbi_write_png(output_filepath.c_str(), width, height, channels, output_data.data(), width * channels);
 
     if(img_data != nullptr) {
         stbi_image_free(img_data);

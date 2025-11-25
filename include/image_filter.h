@@ -24,12 +24,12 @@ namespace dsm{
         template <std::ranges::random_access_range Container> requires 
             Addible<std::ranges::range_value_t<Container>> && 
             Multiplicable<std::ranges::range_value_t<Container>>
-        static auto domain_average1d(Container&& input, int radius);
+        static auto domain_average_filter1d(Container&& input, int radius);
         
         template <std::ranges::random_access_range Container> requires 
             Addible<std::ranges::range_value_t<Container>> && 
             Multiplicable<std::ranges::range_value_t<Container>>
-        static auto domain_average2d(Container&& input, size_t width, size_t height, int radius);
+        static auto domain_average_filter2d(Container&& input, size_t width, size_t height, int radius);
 
         template<std::ranges::random_access_range Container, typename Comparator = std::ranges::less>
         static auto median_filter1d(Container&& input, int radius, Comparator&& comp = Comparator{});
@@ -42,14 +42,15 @@ namespace dsm{
         static auto gradient_filter1d(Container&& input);
 
         template<std::ranges::random_access_range Container> requires
-            Subtractable<std::ranges::range_value_t<Container>>
+            Subtractable<std::ranges::range_value_t<Container>> &&
+            Addible<std::ranges::range_value_t<Container>>
         static auto gradient_filter2d(Container&& input, size_t width, size_t height);
     };
     
     template <std::ranges::random_access_range Container> requires 
         Addible<std::ranges::range_value_t<Container>> && 
         Multiplicable<std::ranges::range_value_t<Container>>
-    inline auto image_filter::domain_average1d(Container&& input, int radius)
+    inline auto image_filter::domain_average_filter1d(Container&& input, int radius)
     {
         using namespace std;
         using T = ranges::range_value_t<Container>;
@@ -83,7 +84,7 @@ namespace dsm{
     template <std::ranges::random_access_range Container> requires
         Addible<std::ranges::range_value_t<Container>> && 
         Multiplicable<std::ranges::range_value_t<Container>>
-    inline auto image_filter::domain_average2d(Container &&input, size_t width, size_t height, int radius)
+    inline auto image_filter::domain_average_filter2d(Container &&input, size_t width, size_t height, int radius)
     {
         using namespace std;
         using T = ranges::range_value_t<Container>;
@@ -230,32 +231,45 @@ namespace dsm{
     }
     
     template <std::ranges::random_access_range Container> requires
-        Subtractable<std::ranges::range_value_t<Container>>
+        Subtractable<std::ranges::range_value_t<Container>> &&
+        Addible<std::ranges::range_value_t<Container>>
     inline auto image_filter::gradient_filter2d(Container &&input, size_t width, size_t height)
     {
         using namespace std;
         using T = ranges::range_value_t<Container>;
         
         if(width < 2 || height < 2){
-            return std::vector{ranges::begin(input), ranges::end(input)};
+            return std::vector<T>{ranges::begin(input), ranges::end(input)};
         }
 
         auto input_view = input | views::chunk(width);
         std::vector<T> output(ranges::size(input));
 
         for(auto row_it = ranges::begin(input_view); row_it != ranges::end(input_view); ++row_it) {
+            auto dist_col = ranges::distance(ranges::begin(input_view), row_it);
             auto next_row = ranges::next(row_it);
             if(next_row == ranges::end(input_view)) {
-                
+                auto output_it = ranges::next(ranges::begin(output), dist_col * width);
+                ranges::copy(*ranges::prev(row_it), output_it);
+                break;
             }
-            for(auto it = ranges::begin(*row_it); it != ranges::end(*row_it); ++it) {
-                auto 
+
+            auto begin_row_it = ranges::begin(*row_it);
+            auto end_row_it = ranges::end(*row_it);
+            for(auto it = begin_row_it; it != end_row_it; ++it) {
+                auto dist_row = ranges::distance(begin_row_it, it);
+                auto dist = dist_col * width + dist_row;
+                auto output_it = ranges::next(ranges::begin(output), dist);
+                if(ranges::next(it) == end_row_it) {
+                    *output_it = *ranges::prev(it);
+                }
+                else {
+                    T gx = abs(*it - *ranges::next(it));
+                    T gy = abs(*it - *ranges::next(ranges::begin(*next_row), dist_row));
+                    *output_it = gx + gy;
+                }
             }
-            auto dist = ranges::distance(ranges::begin(input), row_it);
-            auto output_it = ranges::next(ranges::begin(output), dist);
-            *output_it = abs(*it - *ranges::next(it));
         }
-        output.back() = *ranges::prev(ranges::end(input), 2);
 
         return output;
     }
