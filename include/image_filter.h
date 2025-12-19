@@ -25,8 +25,6 @@ namespace dsm{
 
     class image_filter
     {
-    private:
-
     public:
         template <std::ranges::random_access_range Container> requires 
             addible_and_multi_float<std::ranges::range_value_t<Container>>

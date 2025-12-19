@@ -2,6 +2,7 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 
 #include "image_filter.h"
+#include "image_coding/huffman_coding.h"
 
 #include <stb_image.h>
 #include <stb_image_write.h>
@@ -11,6 +12,7 @@
 #include <vector>
 #include <algorithm>
 #include <numbers>
+#include <chrono>
 
 struct Color
 {
@@ -83,22 +85,11 @@ Color max(const Color& a, const Color& b)
     return Color{std::max(a.r, b.r), std::max(a.g, b.g), std::max(a.b, b.b)};
 }
 
-int main() 
-{
-    int width, height, components;
-    int channels = 3;
-    std::string mhfilename = "madoka_homura";
-    std::string rtfilename = "raytracing";
-    auto selected_filename = mhfilename;
-    std::string suffixjpg = ".jpg";
-    std::string suffixpng = ".png";
-    auto filepath = "asset/" + selected_filename + suffixjpg;
-    stbi_uc* img_data= stbi_load(filepath.c_str(), &width, &height, &components, channels);
-    if (img_data == nullptr) 
-        return -1;
-    
-    uint32_t size = width * height * channels;
-    std::vector<Color> img_vector = std::span(img_data, size)
+
+template <std::ranges::random_access_range Container>
+auto test_image_filter(Container&& input, size_t width, size_t height, size_t channels)
+{    
+    std::vector<Color> img_vector = input
         | std::views::chunk(channels) 
         | std::views::transform([](auto chunk) {
             auto it = chunk.begin();
@@ -131,7 +122,7 @@ int main()
     // auto result = dsm::image_filter::sobel_filter(luminance, width, height, cmp_func);
     // auto result = dsm::image_filter::prewitt_filter(luminance, width, height, cmp_func);
     auto result = dsm::image_filter::kirsch_filter(luminance, width, height, cmp_func);
-
+    
     std::vector<uint8_t> output_data = result
         | std::views::transform([](const Color& color) {
             uint8_t r = static_cast<uint8_t>(std::clamp(color.r * 255.0f, 0.0f, 255.0f));
@@ -141,12 +132,65 @@ int main()
         | std::views::join
         | std::ranges::to<std::vector>();
 
+    return output_data;
+}
+
+template <std::ranges::range Container>
+std::vector<uint8_t> test_image_coding(Container&& input)
+{
+    dsm::image_coding::huffman_coder coder{};
+    coder.encode(std::forward<Container>(input));
+    auto data = coder.decode();
+    return data;
+}
+
+
+void test_image(int run_count)
+{
+    int width, height, components;
+    int channels = 3;
+    std::string mhfilename = "madoka_homura";
+    std::string rtfilename = "raytracing";
+    auto selected_filename = mhfilename;
+    std::string suffixjpg = ".jpg";
+    std::string suffixpng = ".png";
+    auto filepath = "asset/" + selected_filename + suffixjpg;
+    stbi_uc* img_data= stbi_load(filepath.c_str(), &width, &height, &components, channels);
+    if (img_data == nullptr) 
+        return;
+    
+    uint32_t size = width * height * channels;
+    auto input_data = std::span{ img_data, size };
+    // auto input_data = std::vector<uint8_t>{1};
+    
+    auto start = std::chrono::high_resolution_clock::now();
+
+    std::vector<uint8_t> output_data;
+    for(int i = 0; i < run_count; ++i){
+        // auto output_data = test_image_filter(input_data, width, height, channels);
+        output_data = test_image_coding(input_data);
+    }
+
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+    std::println("run count: {}, total time cost: {}, average time cost: {}", run_count, duration, duration / run_count);
+
+    for (const auto& [index, data] : input_data | std::views::enumerate) {
+        assert(data == output_data[index]);
+    }
+
     auto output_filepath = "asset/output/" + selected_filename + ".png";
-    stbi_write_png(output_filepath.c_str(), width, height, channels, output_data.data(), width * channels);
+    stbi_write_png(output_filepath.c_str(), width, output_data.size() / (width * channels), channels, output_data.data(), width * channels);
 
     if(img_data != nullptr) {
         stbi_image_free(img_data);
     }
-    std::println("Image processing completed successfully.");
+    std::println("Image processing completed successfully. output saved to {}", output_filepath);
+}
+
+int main(int argc, char* argv[]) 
+{
+    int run_count = argc <= 1 ? 1 : std::clamp((int)std::atof(argv[1]), 1, 10);
+    test_image(run_count);
     return 0;
 }
