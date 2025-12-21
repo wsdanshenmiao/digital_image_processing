@@ -39,6 +39,10 @@ namespace dsm::image_coding {
         template <uint8_range Container>
         void encode(Container&& input)
         {
+            if(std::ranges::empty(input)) {
+                return;
+            }
+
             auto histogram = dsm::utility::calculate_histogram(std::forward<Container>(input));
             m_huffman_tree_root = build_huffman_tree(histogram);
             auto mapping_table = generate_mapping_table(m_huffman_tree_root.get());
@@ -48,7 +52,6 @@ namespace dsm::image_coding {
             m_encoded_bits.reserve(std::ranges::size(input));
             // encode input data
             for(const auto& data : input){
-                assert(mapping_table.contains(data));
                 const auto& bits = mapping_table.at(data);
                 for(const auto& bit : bits){
                     current_byte |= (bit ? 1 : 0) << counter;
@@ -66,17 +69,19 @@ namespace dsm::image_coding {
             else {
                 m_huffman_tree_root->value = std::numeric_limits<uint8_t>::max();
             }
-            m_encoded_bits.shrink_to_fit();
         }
 
         std::vector<uint8_t> decode()
         {
-            assert(m_huffman_tree_root != nullptr);
+            if(m_huffman_tree_root == nullptr){
+                return {};
+            }
 
             std::vector<uint8_t> decoded_data;
+            decoded_data.reserve(m_encoded_bits.size());
             const Node* current_node = m_huffman_tree_root.get();
 
-            size_t end_index = m_encoded_bits.size() - 1;
+            ptrdiff_t end_index = m_encoded_bits.size() - 1;
             uint8_t root_val = m_huffman_tree_root->value;
             for(const auto& [index, byte] : m_encoded_bits | std::views::enumerate) {
                 int counter = 7;
@@ -142,11 +147,11 @@ namespace dsm::image_coding {
             return std::unique_ptr<Node>(min_heap.top());
         }
 
-        std::unordered_map<uint8_t, std::vector<bool>> generate_mapping_table(const Node* root)
+        auto generate_mapping_table(const Node* root)
         {
             assert(root != nullptr);
 
-            std::unordered_map<uint8_t, std::vector<bool>> mapping_table;
+            std::array<std::vector<bool>, sm_symbol_count> mapping_table;
             std::stack<std::pair<const Node*, std::vector<bool>>> node_stack;
 
             bool is_unique_symbol = root->left == nullptr && root->right == nullptr;
@@ -182,6 +187,8 @@ namespace dsm::image_coding {
         }
 
     private:
+        inline static constexpr size_t sm_symbol_count = std::numeric_limits<uint8_t>::max() + 1;
+
         std::vector<uint8_t> m_encoded_bits;
         std::unique_ptr<Node> m_huffman_tree_root;
     };

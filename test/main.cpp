@@ -151,10 +151,10 @@ void test_image(int run_count)
     int channels = 3;
     std::string mhfilename = "madoka_homura";
     std::string rtfilename = "raytracing";
-    auto selected_filename = mhfilename;
+    auto selected_filename = rtfilename;
     std::string suffixjpg = ".jpg";
     std::string suffixpng = ".png";
-    auto filepath = "asset/" + selected_filename + suffixjpg;
+    auto filepath = "asset/" + selected_filename + suffixpng;
     stbi_uc* img_data= stbi_load(filepath.c_str(), &width, &height, &components, channels);
     if (img_data == nullptr) 
         return;
