@@ -3,6 +3,7 @@
 
 #include "image_filter.h"
 #include "image_coding/huffman_coding.h"
+#include "image_coding/shannon_fano_coding.h"
 
 #include <stb_image.h>
 #include <stb_image_write.h>
@@ -138,10 +139,10 @@ auto test_image_filter(Container&& input, size_t width, size_t height, size_t ch
 template <std::ranges::range Container>
 std::vector<uint8_t> test_image_coding(Container&& input)
 {
-    dsm::image_coding::huffman_coder coder{};
+    dsm::image_coding::shannon_fano_coder coder{};
     coder.encode(std::forward<Container>(input));
-    auto data = coder.decode();
-    return data;
+    // auto data = coder.decode();
+    return {};
 }
 
 

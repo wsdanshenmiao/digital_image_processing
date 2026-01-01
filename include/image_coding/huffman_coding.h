@@ -14,9 +14,6 @@
 
 namespace dsm::image_coding {
 
-    template <typename Container>
-    concept uint8_range = std::ranges::range<Container> && std::same_as<std::ranges::range_value_t<Container>, uint8_t>;
-
     class huffman_coder
     {
     private:
@@ -36,7 +33,7 @@ namespace dsm::image_coding {
     public:
         const std::vector<uint8_t>& get_encoded_bits() const { return m_encoded_bits; }
 
-        template <uint8_range Container>
+        template <utility::uint8_range Container>
         void encode(Container&& input)
         {
             if(std::ranges::empty(input)) {

@@ -30,7 +30,7 @@ target(targetName)
     set_targetdir(path.join(binDir, targetName))
 
     add_files("test/*.cpp", "src/*.cpp")
-    add_headerfiles("include/*.h", "thirdparty/*.h")
+    add_headerfiles("include/**.h", "thirdparty/**.h")
     
     add_includedirs("include", "thirdparty")
     
