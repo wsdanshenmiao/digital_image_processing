@@ -141,8 +141,8 @@ std::vector<uint8_t> test_image_coding(Container&& input)
 {
     dsm::image_coding::shannon_fano_coder coder{};
     coder.encode(std::forward<Container>(input));
-    // auto data = coder.decode();
-    return {};
+    auto data = coder.decode();
+    return data;
 }
 
 
@@ -152,17 +152,18 @@ void test_image(int run_count)
     int channels = 3;
     std::string mhfilename = "madoka_homura";
     std::string rtfilename = "raytracing";
-    auto selected_filename = rtfilename;
+    auto selected_filename = mhfilename;
     std::string suffixjpg = ".jpg";
     std::string suffixpng = ".png";
-    auto filepath = "asset/" + selected_filename + suffixpng;
+    auto filepath = "asset/" + selected_filename + suffixjpg;
     stbi_uc* img_data= stbi_load(filepath.c_str(), &width, &height, &components, channels);
     if (img_data == nullptr) 
         return;
     
     uint32_t size = width * height * channels;
     auto input_data = std::span{ img_data, size };
-    // auto input_data = std::vector<uint8_t>{1};
+    // std::vector<uint8_t> input_data{};
+
     
     auto start = std::chrono::high_resolution_clock::now();
 

@@ -17,16 +17,16 @@ namespace dsm::image_coding {
     class huffman_coder
     {
     private:
-        struct Node
+        struct node
         {
             // symbol value, is not one symbol, root value is padding count of last byte
             uint8_t value{};
             size_t frequency{};
-            std::unique_ptr<Node> left{};
-            std::unique_ptr<Node> right{};
+            std::unique_ptr<node> left{};
+            std::unique_ptr<node> right{};
 
-            Node(uint8_t val, size_t freq) : value(val), frequency(freq), left(nullptr), right(nullptr) {}
-            Node(uint8_t val, size_t freq, std::unique_ptr<Node> l, std::unique_ptr<Node> r)
+            node(uint8_t val, size_t freq) : value(val), frequency(freq), left(nullptr), right(nullptr) {}
+            node(uint8_t val, size_t freq, std::unique_ptr<node> l, std::unique_ptr<node> r)
                 : value(val), frequency(freq), left(std::move(l)), right(std::move(r)) {}
         };
 
@@ -40,7 +40,7 @@ namespace dsm::image_coding {
                 return;
             }
 
-            auto histogram = dsm::utility::calculate_histogram(std::forward<Container>(input));
+            auto histogram = dsm::utility::calculate_histogram(input);
             m_huffman_tree_root = build_huffman_tree(histogram);
             auto mapping_table = generate_mapping_table(m_huffman_tree_root.get());
 
@@ -76,7 +76,7 @@ namespace dsm::image_coding {
 
             std::vector<uint8_t> decoded_data;
             decoded_data.reserve(m_encoded_bits.size());
-            const Node* current_node = m_huffman_tree_root.get();
+            const node* current_node = m_huffman_tree_root.get();
 
             ptrdiff_t end_index = m_encoded_bits.size() - 1;
             uint8_t root_val = m_huffman_tree_root->value;
@@ -101,34 +101,34 @@ namespace dsm::image_coding {
         }
 
     private:
-        std::unique_ptr<Node> build_huffman_tree(std::span<const size_t> histogram)
+        std::unique_ptr<node> build_huffman_tree(std::span<const size_t> histogram)
         {
             if(histogram.empty()) {
                 return nullptr;
             }
 
-            auto compare = [](const Node* a, const Node* b) {
+            auto compare = [](const node* a, const node* b) {
                 return a->frequency > b->frequency;
             };
-            std::priority_queue<Node*, std::vector<Node*>, decltype(compare)> min_heap{compare};
+            std::priority_queue<node*, std::vector<node*>, decltype(compare)> min_heap{compare};
             // Build leaf nodes and push into min-heap
             for(const auto& [index, freq] : histogram | std::views::enumerate) {
                 if (freq > 0) {
-                    min_heap.emplace(new Node(index, freq));
+                    min_heap.emplace(new node(index, freq));
                 }
             }
             assert(!min_heap.empty());
             // only one unique symbol
             if (min_heap.size() == 1) {
-                auto node = std::unique_ptr<Node>(min_heap.top());
+                auto n = std::unique_ptr<node>(min_heap.top());
                 min_heap.pop();
-                return std::make_unique<Node>(0, 0, nullptr, std::move(node));
+                return std::make_unique<node>(0, 0, nullptr, std::move(n));
             }
 
             while (min_heap.size() > 1) {
-                auto left = std::unique_ptr<Node>(min_heap.top());
+                auto left = std::unique_ptr<node>(min_heap.top());
                 min_heap.pop();
-                auto right = std::unique_ptr<Node>(min_heap.top());
+                auto right = std::unique_ptr<node>(min_heap.top());
                 min_heap.pop();
                 // ensure left has smaller frequency, left edge is 0, right edge is 1
                 if(compare(left.get(), right.get())) {
@@ -137,19 +137,19 @@ namespace dsm::image_coding {
 
                 // sort by frequency
                 auto sum_freq = left->frequency + right->frequency;
-                auto merged_node = new Node(0, sum_freq, std::move(left), std::move(right));
+                auto merged_node = new node(0, sum_freq, std::move(left), std::move(right));
                 min_heap.emplace(merged_node);
             }
 
-            return std::unique_ptr<Node>(min_heap.top());
+            return std::unique_ptr<node>(min_heap.top());
         }
 
-        auto generate_mapping_table(const Node* root)
+        auto generate_mapping_table(const node* root)
         {
             assert(root != nullptr);
 
             std::array<std::vector<bool>, sm_symbol_count> mapping_table;
-            std::stack<std::pair<const Node*, std::vector<bool>>> node_stack;
+            std::stack<std::pair<const node*, std::vector<bool>>> node_stack;
 
             bool is_unique_symbol = root->left == nullptr && root->right == nullptr;
             // push root's children to stack
@@ -187,7 +187,7 @@ namespace dsm::image_coding {
         inline static constexpr size_t sm_symbol_count = std::numeric_limits<uint8_t>::max() + 1;
 
         std::vector<uint8_t> m_encoded_bits;
-        std::unique_ptr<Node> m_huffman_tree_root;
+        std::unique_ptr<node> m_huffman_tree_root;
     };
 
 } // namespace dsm::image_coding

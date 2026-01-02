@@ -36,7 +36,10 @@ namespace dsm::utility {
     ///                     the code must be stored in the lower bits of uint32_t
     /// @return encoded data
     template <uint8_range Container>
-    inline std::vector<uint8_t> encode_data_width_mapping_table(Container&& input, const std::unordered_map<uint8_t, std::pair<uint32_t, uint8_t>>& mapping_table)
+    inline std::vector<uint8_t> encode_data_width_mapping_table(
+        Container&& input, 
+        const std::unordered_map<uint8_t, std::pair<uint32_t, uint8_t>>& mapping_table,
+        uint8_t& end_len)
     {
         std::vector<uint8_t> output{};
         uint8_t current_byte = 0;
@@ -45,7 +48,7 @@ namespace dsm::utility {
             assert(mapping_table.contains(byte));
             auto [code, length] = mapping_table.at(byte);
             // write bits to output
-            while (code > 0) {
+            while (length > 0) {
                 uint8_t remaining_len = 8 - counter;
                 uint8_t need_len = std::min(remaining_len, length);
                 current_byte <<= need_len;
@@ -59,6 +62,13 @@ namespace dsm::utility {
                     counter = 0;
                 }
             }
+        }
+        if (counter != 0) {
+            output.push_back(current_byte);
+            end_len = counter;
+        }
+        else {
+            end_len = 8;
         }
         
         return output;
