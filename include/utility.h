@@ -20,7 +20,7 @@ namespace dsm::utility {
         static_assert(std::same_as<std::ranges::range_value_t<Container>, uint8_t>,
             "Input container's value type must be uint8_t.");
         
-        std::array<size_t, std::numeric_limits<uint8_t>::max() + 1> histogram{};
+        std::array<size_t, 256> histogram{};
         for(const auto& val : input){
             assert(std::in_range<uint8_t>(val));
             ++histogram[val];
@@ -34,18 +34,18 @@ namespace dsm::utility {
     /// @param input a set of image data, the value type must be uint8_t
     /// @param mapping_table a mapping table that maps each uint8_t value to a pair of (code, length)
     ///                     the code must be stored in the lower bits of uint32_t
+    /// @param end_len last byte valid bit length
     /// @return encoded data
     template <uint8_range Container>
     inline std::vector<uint8_t> encode_data_width_mapping_table(
         Container&& input, 
-        const std::unordered_map<uint8_t, std::pair<uint32_t, uint8_t>>& mapping_table,
+        const std::array<std::pair<uint32_t, uint8_t>, 256>& mapping_table,
         uint8_t& end_len)
     {
         std::vector<uint8_t> output{};
         uint8_t current_byte = 0;
         uint8_t counter = 0;
         for(uint8_t byte : input){
-            assert(mapping_table.contains(byte));
             auto [code, length] = mapping_table.at(byte);
             // write bits to output
             while (length > 0) {
@@ -65,11 +65,8 @@ namespace dsm::utility {
         }
         if (counter != 0) {
             output.push_back(current_byte);
-            end_len = counter;
         }
-        else {
-            end_len = 8;
-        }
+        end_len = counter == 0 ? 8 : counter;
         
         return output;
     }

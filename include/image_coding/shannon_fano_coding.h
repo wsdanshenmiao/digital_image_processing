@@ -16,7 +16,7 @@ namespace dsm::image_coding {
     class shannon_fano_coder
     {
     private:
-        using mapping_table = std::unordered_map<uint8_t, std::pair<uint32_t, uint8_t>>;
+        using mapping_table = std::array<std::pair<uint32_t, uint8_t>, 256>;
 
         /// @brief encoding tree node, left is 0, right is 1
         struct node
@@ -107,9 +107,12 @@ namespace dsm::image_coding {
         std::unique_ptr<node> build_encoding_tree(const mapping_table& table)
         {
             auto root = std::make_unique<node>();
-            for(const auto& [symbol, data] : table){
-                node* curr_node = root.get();
+            for(const auto& [symbol, data] : table | std::views::enumerate){
                 auto [code, len] = data;
+                if(len <= 0){
+                    continue;
+                }
+                node* curr_node = root.get();
                 for(uint8_t i = 0; i < len; ++i){
                     auto& tmp_node = (code >> (len - i - 1)) & 1 ? curr_node->right : curr_node->left;
                     if(tmp_node == nullptr){
