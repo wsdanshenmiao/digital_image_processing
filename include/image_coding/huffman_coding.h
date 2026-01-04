@@ -31,7 +31,7 @@ namespace dsm::image_coding {
         };
 
     public:
-        const std::vector<uint8_t>& get_encoded_bits() const { return m_encoded_bits; }
+        const std::vector<uint8_t>& get_encoded_data() const noexcept { return m_encoded_bits; }
 
         template <utility::uint8_range Container>
         void encode(Container&& input)

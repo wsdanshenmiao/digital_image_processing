@@ -140,7 +140,7 @@ template <std::ranges::range Container>
 std::vector<uint8_t> test_image_coding(Container&& input)
 {
     dsm::image_coding::shannon_fano_coder coder{};
-    coder.encode(std::forward<Container>(input));
+    coder.split_mid_encode(std::forward<Container>(input));
     auto data = coder.decode();
     return data;
 }
@@ -162,8 +162,7 @@ void test_image(int run_count)
     
     uint32_t size = width * height * channels;
     auto input_data = std::span{ img_data, size };
-    // std::vector<uint8_t> input_data{};
-
+    std::vector<uint8_t> input_data{};
     
     auto start = std::chrono::high_resolution_clock::now();
 
