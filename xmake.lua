@@ -29,7 +29,7 @@ target(targetName)
     set_kind("binary")
     set_targetdir(path.join(binDir, targetName))
 
-    add_files("test/*.cpp", "src/*.cpp")
+    add_files("test/*.cpp")
     add_headerfiles("include/**.h", "thirdparty/**.h")
     
     add_includedirs("include", "thirdparty")

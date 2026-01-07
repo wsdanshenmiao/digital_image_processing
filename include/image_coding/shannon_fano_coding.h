@@ -101,30 +101,24 @@ namespace dsm::image_coding {
             auto size = std::ranges::size(input);
             auto frequency_table = generate_frequency_table(std::forward<Container>(input));
 
-            // calculate word lengths
-            std::vector<std::pair<uint8_t, float>> pdf{};
-            std::array<uint8_t, 256> word_length{};
-            for(const auto& [symbol, freq] : frequency_table){
-                if(freq == 0){
-                    break;
-                }
-                float prob = static_cast<float>(freq) / size;
-                pdf.emplace_back(symbol, prob);
-                word_length[symbol] = static_cast<uint8_t>(std::max(std::ceil(-std::log2(prob)), 1.f));
-            }
-
             // calculate cdf and build mapping table
             std::array<float, 256> cdf{};
+            float pre_prob = static_cast<float>(frequency_table[0].second) / size;
             mapping_table table{};
-            for(auto i = 1; i < std::size(pdf); ++i){
-                auto [pre_symbol, pre_prob] = pdf[i - 1];
-                auto [symbol, prob] = pdf[i];
+            for(auto i = 1; i < std::size(frequency_table); ++i){
+                if(frequency_table[i].second == 0){
+                    break;
+                }
+                uint8_t pre_symbol = frequency_table[i - 1].first;
+                uint8_t symbol = frequency_table[i].first;
+                float prob = static_cast<float>(frequency_table[i].second) / size;
                 cdf[i] = cdf[i - 1] + pre_prob;
-                table[symbol] = std::make_pair(
-                    decimal_to_binary(cdf[i], word_length[symbol]),
-                    word_length[symbol] );
+                pre_prob = prob;
+                uint8_t word_length = static_cast<uint8_t>(std::max(std::ceil(-std::log2(prob)), 1.f));
+                table[symbol] = std::make_pair(decimal_to_binary(cdf[i], word_length), word_length);
             }
-            table[pdf[0].first] = {0, word_length[pdf[0].first]};
+            auto first_world_length = static_cast<uint8_t>(std::max(std::ceil(-std::log2(static_cast<float>(frequency_table[0].second) / size)), 1.f));
+            table[frequency_table[0].first] = {0, first_world_length};
 
             return table;
         }

@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <numbers>
 #include <chrono>
+#include <filesystem>
 
 struct Color
 {
@@ -140,29 +141,22 @@ template <std::ranges::range Container>
 std::vector<uint8_t> test_image_coding(Container&& input)
 {
     dsm::image_coding::shannon_fano_coder coder{};
-    coder.split_mid_encode(std::forward<Container>(input));
+    coder.encode(std::forward<Container>(input));
     auto data = coder.decode();
     return data;
 }
 
 
-void test_image(int run_count)
+void test_image(const std::string& filepath, int run_count)
 {
     int width, height, components;
     int channels = 3;
-    std::string mhfilename = "madoka_homura";
-    std::string rtfilename = "raytracing";
-    auto selected_filename = mhfilename;
-    std::string suffixjpg = ".jpg";
-    std::string suffixpng = ".png";
-    auto filepath = "asset/" + selected_filename + suffixjpg;
     stbi_uc* img_data= stbi_load(filepath.c_str(), &width, &height, &components, channels);
     if (img_data == nullptr) 
         return;
     
     uint32_t size = width * height * channels;
     auto input_data = std::span{ img_data, size };
-    std::vector<uint8_t> input_data{};
     
     auto start = std::chrono::high_resolution_clock::now();
 
@@ -180,7 +174,10 @@ void test_image(int run_count)
         assert(data == output_data[index]);
     }
 
-    auto output_filepath = "asset/output/" + selected_filename + ".png";
+    std::filesystem::path path{filepath};
+    auto output_filepath = path.parent_path().empty() ? 
+        ("output/" + path.filename().string()) : 
+        (path.parent_path().string() + "/output/" + path.filename().string());
     stbi_write_png(output_filepath.c_str(), width, output_data.size() / (width * channels), channels, output_data.data(), width * channels);
 
     if(img_data != nullptr) {
@@ -189,9 +186,21 @@ void test_image(int run_count)
     std::println("Image processing completed successfully. output saved to {}", output_filepath);
 }
 
+void print_usage(const char* program_name) 
+{
+    std::println("Usage: {} <image_path> <run_count>", program_name);
+    std::println("Example: {} test_image.png 5", program_name);
+}
+
 int main(int argc, char* argv[]) 
 {
-    int run_count = argc <= 1 ? 1 : std::clamp((int)std::atof(argv[1]), 1, 10);
-    test_image(run_count);
+    if(argc <= 1) {
+        print_usage(argv[0]);
+    }
+    else {
+        std::string image_path = argv[1];
+        int run_count = argc <= 2 ? 1 : std::clamp((int)std::atof(argv[2]), 1, 10);
+        test_image(image_path, run_count);
+    }
     return 0;
 }
