@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <numeric>
 #include <cmath>
+#include <cassert>
 
 namespace dsm{
     template <typename T>
@@ -76,13 +77,13 @@ namespace dsm{
 
     private:
         template<std::ranges::random_access_range Container, typename Func>
-        static auto filter_kernel2(Container&& input, size_t width, size_t height, Func&& func);
+        static auto traverse_input2(Container&& input, size_t width, size_t height, Func&& func);
     
         template<std::ranges::random_access_range Container, typename Func>
-        static auto filter_kernel(Container&& input, size_t width, size_t height, int radius, Func&& func);
+        static auto traverse_input(Container&& input, size_t width, size_t height, int radius, Func&& func);
         
-        template<std::ranges::random_access_range Container, typename Func>
-        static auto filter_kernel(Container&& input, size_t width, size_t height, int radius, const std::span<float> kernel);
+        template<std::ranges::random_access_range Container>
+        static auto traverse_input_with_kernel(Container&& input, size_t width, size_t height, int radius, const std::span<float> kernel);
     };
     
     template <std::ranges::random_access_range Container> requires 
@@ -126,7 +127,7 @@ namespace dsm{
         float inv_size = 1.f / static_cast<float>(kernel_size);
         static std::vector<float> kernel{};
         kernel.resize(kernel_size, inv_size);
-        return filter_kernel(input, width, height, radius, kernel);
+        return traverse_input_with_kernel(std::forward<Container>(input), width, height, radius, kernel);
     }
     
     template<std::ranges::random_access_range Container, typename Comparator>
@@ -161,7 +162,7 @@ namespace dsm{
     inline auto image_filter::median_filter2d(Container &&input, size_t width, size_t height, int radius, Comparator&& comp)
     {
         size_t kernel_size = (2 * radius + 1) * (2 * radius + 1);
-        return filter_kernel(input, width, height, radius, 
+        return traverse_input(std::forward<Container>(input), width, height, radius, 
             [kernel_size, comp = std::forward<Comparator>(comp)](const auto& kernel_values) {
                 using namespace std;
                 auto joined_kernel = kernel_values | views::join;
@@ -205,7 +206,7 @@ namespace dsm{
         addible<std::ranges::range_value_t<Container>>
     inline auto image_filter::gradient_filter2d(Container &&input, size_t width, size_t height)
     {
-        return filter_kernel2(std::forward<Container>(input), width, height,
+        return traverse_input2(std::forward<Container>(input), width, height,
             [](const auto& kernel_values) {
                 using It = std::ranges::range_value_t<decltype(kernel_values)>;
                 using T = std::iter_value_t<It>;
@@ -220,9 +221,9 @@ namespace dsm{
         addible<std::ranges::range_value_t<Container>>
     inline auto image_filter::robert_gradient_filter(Container&& input, size_t width, size_t height)
     {
-        return filter_kernel2(std::forward<Container>(input), width, height,
+        return traverse_input2(std::forward<Container>(input), width, height,
             [](const auto& kernel_values) {
-                static_assert(std::ranges::size(kernel_values) == 4, "Neighbors size must be 4.");
+                assert(std::ranges::size(kernel_values) == 4 && "Neighbors size must be 4.");
                 using It = std::ranges::range_value_t<decltype(kernel_values)>;
                 using T = std::iter_value_t<It>;
                 T gx = abs(*kernel_values[0] - *kernel_values[3]);
@@ -236,7 +237,7 @@ namespace dsm{
     inline auto image_filter::laplacian_filter(Container &&input, size_t width, size_t height)
     {
         static std::array<float, 9> kernel = { 0, -1, 0, -1, 4, -1, 0, -1, 0 };
-        return filter_kernel(std::forward<Container>(input), width, height, 1, kernel);
+        return traverse_input_with_kernel(std::forward<Container>(input), width, height, 1, kernel);
     }
 
     template<std::ranges::random_access_range Container> requires
@@ -255,14 +256,14 @@ namespace dsm{
                         kernel_yy[i] * sin_angle * sin_angle +
                         kernel_xy[i] * 2.0f * cos_angle * sin_angle;
         }
-        return filter_kernel(std::forward<Container>(input), width, height, 1, kernel);
+        return traverse_input_with_kernel(std::forward<Container>(input), width, height, 1, kernel);
     }
 
     template <std::ranges::random_access_range Container, typename Comparator> requires
         addible_and_multi_float<std::ranges::range_value_t<Container>>
     inline auto image_filter::sobel_filter(Container &&input, size_t width, size_t height, Comparator&& comp)
     {
-        return filter_kernel(std::forward<Container>(input), width, height, 1,
+        return traverse_input(std::forward<Container>(input), width, height, 1,
             [comp = std::forward<Comparator>(comp)](const auto& kernel_values){
                 using namespace std;
                 using T = ranges::range_value_t<ranges::range_value_t<decltype(kernel_values)>>;
@@ -283,7 +284,7 @@ namespace dsm{
         addible_and_multi_float<std::ranges::range_value_t<Container>>
     inline auto image_filter::prewitt_filter(Container &&input, size_t width, size_t height, Comparator&& comp)
     {
-        return filter_kernel(std::forward<Container>(input), width, height, 1,
+        return traverse_input(std::forward<Container>(input), width, height, 1,
             [comp = std::forward<Comparator>(comp)](const auto& kernel_values){
                 using namespace std;
                 using T = ranges::range_value_t<ranges::range_value_t<decltype(kernel_values)>>;
@@ -304,7 +305,7 @@ namespace dsm{
         addible_and_multi_float<std::ranges::range_value_t<Container>>
     inline auto image_filter::kirsch_filter(Container &&input, size_t width, size_t height, Comparator&& comp)
     {
-        return filter_kernel(std::forward<Container>(input), width, height, 1,
+        return traverse_input(std::forward<Container>(input), width, height, 1,
             [comp = std::forward<Comparator>(comp)](const auto& kernel_values){
                 using namespace std;
                 using T = ranges::range_value_t<ranges::range_value_t<decltype(kernel_values)>>;
@@ -331,7 +332,7 @@ namespace dsm{
     }
 
     template<std::ranges::random_access_range Container, typename Func>
-    inline auto image_filter::filter_kernel2(Container &&input, size_t width, size_t height, Func&& func)
+    inline auto image_filter::traverse_input2(Container &&input, size_t width, size_t height, Func&& func)
     {
         using namespace std;
         using T = ranges::range_value_t<Container>;
@@ -377,7 +378,7 @@ namespace dsm{
     }
     
     template <std::ranges::random_access_range Container, typename Func>
-    inline auto image_filter::filter_kernel(Container &&input, size_t width, size_t height, int radius, Func &&func)
+    inline auto image_filter::traverse_input(Container &&input, size_t width, size_t height, int radius, Func &&func)
     {
         using namespace std;
         using T = ranges::range_value_t<Container>;
@@ -396,8 +397,9 @@ namespace dsm{
             // distance from the current line to the beginning of the input view
             auto dist_col = ranges::distance(input_view_begin, row_it);
             auto row_begin = ranges::begin(*row_it);
+
             for(auto it = ranges::next(row_begin, radius); 
-                it != ranges::prev(ranges::end(*row_it), radius); ++it) {
+                it < ranges::prev(ranges::end(*row_it), radius); ++it) {
                 // distance from the current element to the beginning of the line
                 auto dist_row = ranges::distance(row_begin, it);
 
@@ -417,10 +419,10 @@ namespace dsm{
         return output;
     }
 
-    template <std::ranges::random_access_range Container, typename Func>
-    inline auto image_filter::filter_kernel(Container &&input, size_t width, size_t height, int radius, const std::span<float> kernel)
+    template <std::ranges::random_access_range Container>
+    inline auto image_filter::traverse_input_with_kernel(Container &&input, size_t width, size_t height, int radius, const std::span<float> kernel)
     {
-        return filter_kernel(std::forward<Container>(input), width, height, 1,
+        return traverse_input(std::forward<Container>(input), width, height, radius,
             [&kernel](const auto& kernel_values){
                 using Subrange = std::ranges::range_value_t<decltype(kernel_values)>;
                 using T = std::ranges::range_value_t<Subrange>;

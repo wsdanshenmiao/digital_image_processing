@@ -87,9 +87,29 @@ Color max(const Color& a, const Color& b)
     return Color{std::max(a.r, b.r), std::max(a.g, b.g), std::max(a.b, b.b)};
 }
 
+enum FilterType
+{
+    DomainAverage,
+    Median,
+    Gradient,
+    RobertGradient,
+    Laplacian,
+    Directional,
+    Sobel,
+    Prewitt,
+    Kirsch
+};
+
+enum CodingType
+{
+    Huffman,
+    ShannonFano,
+    ShannonFanoSplitMid
+};
+
 
 template <std::ranges::random_access_range Container>
-auto test_image_filter(Container&& input, size_t width, size_t height, size_t channels)
+auto run_image_filter(FilterType filter_type, Container&& input, size_t width, size_t height, size_t channels)
 {    
     std::vector<Color> img_vector = input
         | std::views::chunk(channels) 
@@ -104,7 +124,8 @@ auto test_image_filter(Container&& input, size_t width, size_t height, size_t ch
     auto luminance = img_vector 
         | std::views::transform([](const auto& col){
             auto lumi = col.r * 0.299f + col.g * 0.587f + col.b * 0.114f;
-            return Color{lumi, lumi, lumi}; });
+            return Color{lumi, lumi, lumi}; 
+        });
 
     auto cmp_func = [](const Color& a, const Color& b) {
         float luminance_a = 0.299f * a.r + 0.587f * a.g + 0.114f * a.b;
@@ -112,18 +133,37 @@ auto test_image_filter(Container&& input, size_t width, size_t height, size_t ch
         return luminance_a < luminance_b;
     };
 
-    // auto result = dsm::image_filter::domain_average_filter1d(img_vector, 5);
-    // auto result = dsm::image_filter::domain_average_filter2d(img_vector, width, height, 5);
-    // auto result = dsm::image_filter::median_filter1d(img_vector, 5, cmp_func);
-    // auto result = dsm::image_filter::median_filter2d(img_vector, width, height, 5, cmp_func);
-    // auto result = dsm::image_filter::gradient_filter1d(img_vector);
-    // auto result = dsm::image_filter::gradient_filter2d(luminance, width, height);
-    // auto result = dsm::image_filter::robert_gradient_filter(luminance, width, height);
-    // auto result = dsm::image_filter::laplacian_filter(img_vector, width, height);
-    // auto result = dsm::image_filter::directional_filter(img_vector, width, height, std::numbers::pi_v<float> / 4.0f);
-    // auto result = dsm::image_filter::sobel_filter(luminance, width, height, cmp_func);
-    // auto result = dsm::image_filter::prewitt_filter(luminance, width, height, cmp_func);
-    auto result = dsm::image_filter::kirsch_filter(luminance, width, height, cmp_func);
+    std::vector<Color> result{};
+    switch (filter_type){
+    case FilterType::DomainAverage:
+        result = dsm::image_filter::domain_average_filter2d(img_vector, width, height, 2);
+        break;
+    case FilterType::Median:
+        result = dsm::image_filter::median_filter2d(img_vector, width, height, 2, cmp_func);
+        break;
+    case FilterType::Gradient:
+        result = dsm::image_filter::gradient_filter2d(luminance, width, height);
+        break;
+    case FilterType::RobertGradient:
+        result = dsm::image_filter::robert_gradient_filter(luminance, width, height);
+        break;
+    case FilterType::Laplacian:
+        result = dsm::image_filter::laplacian_filter(img_vector, width, height);
+        break;
+    case FilterType::Directional:
+        result = dsm::image_filter::directional_filter(img_vector, width, height, std::numbers::pi_v<float> / 4.0f);
+        break;
+    case FilterType::Sobel:
+        result = dsm::image_filter::sobel_filter(luminance, width, height, cmp_func);
+        break;
+    case FilterType::Prewitt:
+        result = dsm::image_filter::prewitt_filter(luminance, width, height, cmp_func);
+        break;
+    case FilterType::Kirsch:
+        result = dsm::image_filter::kirsch_filter(luminance, width, height, cmp_func);
+    default:
+        break;
+    }
     
     std::vector<uint8_t> output_data = result
         | std::views::transform([](const Color& color) {
@@ -138,16 +178,32 @@ auto test_image_filter(Container&& input, size_t width, size_t height, size_t ch
 }
 
 template <std::ranges::range Container>
-std::vector<uint8_t> test_image_coding(Container&& input)
+std::vector<uint8_t> run_image_coding(CodingType coding_type, Container&& input)
 {
-    dsm::image_coding::shannon_fano_coder coder{};
-    coder.encode(std::forward<Container>(input));
-    auto data = coder.decode();
-    return data;
+    switch (coding_type) {
+    case CodingType::Huffman: {
+        dsm::image_coding::huffman_coder coder{};
+        coder.encode(input);
+        return coder.decode();
+    }
+    case CodingType::ShannonFano: {
+        dsm::image_coding::shannon_fano_coder coder{};
+        coder.encode(input);
+        return coder.decode();
+    }
+    case CodingType::ShannonFanoSplitMid: {
+        dsm::image_coding::shannon_fano_coder coder{};
+        coder.split_mid_encode(input);
+        return coder.decode();
+    }
+    default:
+        break;
+    }
+    return {};
 }
 
-
-void test_image(const std::string& filepath, int run_count)
+template <typename ProcessType> requires std::is_same_v<ProcessType, FilterType> || std::is_same_v<ProcessType, CodingType>
+void test_image(const std::string& filepath, ProcessType process_type, int run_count)
 {
     int width, height, components;
     int channels = 3;
@@ -157,22 +213,24 @@ void test_image(const std::string& filepath, int run_count)
     
     uint32_t size = width * height * channels;
     auto input_data = std::span{ img_data, size };
+
+    std::println("Image loaded: {} (width: {}, height: {}, channels: {})", filepath, width, height, channels);
     
     auto start = std::chrono::high_resolution_clock::now();
 
-    std::vector<uint8_t> output_data;
+    std::vector<uint8_t> output_data{};
     for(int i = 0; i < run_count; ++i){
-        // auto output_data = test_image_filter(input_data, width, height, channels);
-        output_data = test_image_coding(input_data);
+        if constexpr(std::is_same_v<ProcessType, FilterType>) {
+            output_data = run_image_filter(process_type, input_data, width, height, channels);
+        }
+        else if constexpr(std::is_same_v<ProcessType, CodingType>) {
+            output_data = run_image_coding(process_type, input_data);
+        }
     }
 
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
     std::println("run count: {}, total time cost: {}, average time cost: {}", run_count, duration, duration / run_count);
-
-    for (const auto& [index, data] : input_data | std::views::enumerate) {
-        assert(data == output_data[index]);
-    }
 
     std::filesystem::path path{filepath};
     auto output_filepath = path.parent_path().empty() ? 
@@ -188,19 +246,30 @@ void test_image(const std::string& filepath, int run_count)
 
 void print_usage(const char* program_name) 
 {
-    std::println("Usage: {} <image_path> <run_count>", program_name);
-    std::println("Example: {} test_image.png 5", program_name);
+    std::println("Usage: {} <image_path> <process_type> <run_count>", program_name);
+    std::println("Example: {} test_image.png 5 1", program_name);
+    std::println();
+    std::println("Filter Types: \n1.DomainAverage\n2.Median\n3.Gradient\n4.RobertGradient\n5.Laplacian\n6.Directional\n7.Sobel\n8.Prewitt\n9.Kirsch");
+    std::println();
+    std::println("Coding Types: \n10.Huffman\n11.ShannonFano\n12.ShannonFanoSplitMid");
 }
 
 int main(int argc, char* argv[]) 
 {
-    if(argc <= 1) {
+    if(argc <= 2) {
         print_usage(argv[0]);
     }
     else {
         std::string image_path = argv[1];
-        int run_count = argc <= 2 ? 1 : std::clamp((int)std::atof(argv[2]), 1, 10);
-        test_image(image_path, run_count);
+        int process_type = std::atof(argv[2]);
+        process_type = std::clamp(process_type, 1, 12) == process_type ? process_type : 1;
+        int run_count = argc <= 3 ? 1 : std::clamp((int)std::atof(argv[3]), 1, 10);
+        if(9 < process_type && process_type <= 12){
+            test_image(image_path, CodingType(process_type - 10), run_count);
+        }
+        else if(process_type <= 9){
+            test_image(image_path, FilterType(process_type - 1), run_count);    
+        }
     }
     return 0;
 }
