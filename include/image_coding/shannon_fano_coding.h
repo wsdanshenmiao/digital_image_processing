@@ -43,7 +43,7 @@ namespace dsm::image_coding {
             node* curr_node = m_encoded_tree_root.get();
             auto end_len = m_encoded_tree_root->value - 1;
             for(auto [index, data] : m_encoded_data | std::views::enumerate){
-                int counter = (index == m_encoded_data.size() - 1) ? end_len : 7;
+                int counter = (static_cast<size_t>(index) == m_encoded_data.size() - 1) ? end_len : 7;
                 while (counter >= 0) {
                     assert(curr_node != nullptr);
                     curr_node = (data & (1 << counter)) ? curr_node->right.get() : curr_node->left.get();
@@ -109,7 +109,6 @@ namespace dsm::image_coding {
                 if(frequency_table[i].second == 0){
                     break;
                 }
-                uint8_t pre_symbol = frequency_table[i - 1].first;
                 uint8_t symbol = frequency_table[i].first;
                 float prob = static_cast<float>(frequency_table[i].second) / size;
                 cdf[i] = cdf[i - 1] + pre_prob;
