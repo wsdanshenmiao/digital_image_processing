@@ -60,7 +60,7 @@ void test_image(const std::string& filepath, int run_count)
 
 int main()
 {
-    test_image("asset/madoka_homura.jpg", 1);
+    test_image("asset/madoka_homura.jpg", 10);
 
     return 0;
 }

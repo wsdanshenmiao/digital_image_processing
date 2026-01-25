@@ -4,7 +4,7 @@
 #include <cstdio>
 
 
-__global__ void domain_average_filter2d_kernel(uchar3 * input, uchar3 * output, dim3 dim, int radius)
+__global__ void domain_average_filter2d_kernel(uchar3* input, uchar3* output, dim3 dim, int radius)
 {
     uint globalIdx = blockIdx.x * blockDim.x + threadIdx.x;
     uint globalIdy = blockIdx.y * blockDim.y + threadIdx.y;
@@ -30,36 +30,66 @@ __global__ void domain_average_filter2d_kernel(uchar3 * input, uchar3 * output, 
     output[global_index] = make_uchar3(sum.x / area, sum.y / area, sum.z / area);
 }
 
-namespace dsm{
-    std::vector<uint8_t> image_filter_cuda::domain_average_filter2d(const std::vector<uint8_t>& input, size_t width, size_t height, int radius)
-    {
-        auto size = std::size(input);
-        if(radius <= 0 || width * height * 3 != size){
-            return input;
-        }
-
-        // malloc device memory and copy input data
-        uchar3* d_input = nullptr;
-        uchar3* d_output = nullptr;
-        cudaMalloc(&d_input, sizeof(uchar3) * (width * height));
-        cudaMalloc(&d_output, sizeof(uchar3) * (width * height));
-        cudaMemcpy(d_input, std::data(input), sizeof(uchar3) * (width * height), cudaMemcpyHostToDevice);
-
-        // launch kernel
-        dim3 blockDim = std::max(width, height) < 256 ? dim3(1,1,1) : dim3(16,16,1);
-        dim3 gridDim((width + blockDim.x - 1) / blockDim.x, (height + blockDim.y - 1) / blockDim.y);
-        domain_average_filter2d_kernel<<<gridDim, blockDim>>>(d_input, d_output, dim3(width, height, 1), radius);
-
-        cudaDeviceSynchronize();
-
-        // copy back output data
-        std::vector<uint8_t> output(size);
-        cudaMemcpy(std::data(output), d_output, sizeof(uchar3) * (width * height), cudaMemcpyDeviceToHost);
-
-        cudaFree(d_input);
-        cudaFree(d_output);
-
-        return output;
+std::vector<uint8_t> dsm::image_filter_cuda::domain_average_filter2d(const std::vector<uint8_t>& input, size_t width, size_t height, int radius)
+{
+    auto size = std::size(input);
+    if(radius <= 0 || width * height * 3 != size){
+        return input;
     }
+
+    uchar3* d_input = nullptr;
+    uchar3* d_output = nullptr;
+
+    auto check_cuda_error = [&d_input, &d_output](cudaError_t err, const char* msg){
+        bool error = err != cudaSuccess;
+        if(error){
+            fprintf(stderr, "CUDA Error: %s: %s\n", msg, cudaGetErrorString(err));
+            if(d_input != nullptr)
+                cudaFree(d_input);
+            if(d_output != nullptr)
+                cudaFree(d_output);
+        }
+        return error;
+    };
+
+    // malloc device memory and copy input data
+    cudaError_t err = cudaMalloc(&d_input, sizeof(uchar3) * (width * height));
+    if(check_cuda_error(err, "cudaMalloc d_input"))
+        return input;
+    err = cudaMalloc(&d_output, sizeof(uchar3) * (width * height));
+    if(check_cuda_error(err, "cudaMalloc d_output"))
+        return input;
+    err = cudaMemcpy(d_input, std::data(input), sizeof(uchar3) * (width * height), cudaMemcpyHostToDevice);
+    if(check_cuda_error(err, "cudaMemcpy to d_input"))
+        return input;
+
+    // launch kernel
+    dim3 blockDim = std::max(width, height) < 256 ? dim3(1,1,1) : dim3(16,16,1);
+    dim3 gridDim((width + blockDim.x - 1) / blockDim.x, (height + blockDim.y - 1) / blockDim.y);
+    domain_average_filter2d_kernel<<<gridDim, blockDim>>>(d_input, d_output, dim3(width, height, 1), radius);
+
+    // check for kernel launch errors
+    if(check_cuda_error(cudaGetLastError(), "Kernel launch failed"))
+        return input;
+
+    err = cudaDeviceSynchronize();
+    if(check_cuda_error(err, "cudaDeviceSynchronize failed"))
+        return input;
+
+    // copy back output data
+    std::vector<uint8_t> output(size);
+    err = cudaMemcpy(std::data(output), d_output, sizeof(uchar3) * (width * height), cudaMemcpyDeviceToHost);
+    if(check_cuda_error(err, "cudaMemcpy to output"))
+        return input;
+
+    err = cudaFree(d_input);
+    if(check_cuda_error(err, "cudaFree d_input"))
+        return output;
+    err = cudaFree(d_output);
+    if(check_cuda_error(err, "cudaFree d_output"))
+        return output;
+
+    return output;
 }
+
 
