@@ -16,7 +16,7 @@
 std::vector<uint8_t> test_image_filter_cuda(const std::vector<uint8_t>& img_data, int width, int height, int channels)
 {
     std::vector<uint8_t> output_data{};
-    output_data = dsm::image_filter_cuda::domain_average_filter2d(img_data, width, height, 3);
+    output_data = dsm::image_filter_cuda::domain_average_filter2d(img_data, width, height, 2);
     return output_data;
 }
 
