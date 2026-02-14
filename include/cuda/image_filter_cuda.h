@@ -10,6 +10,8 @@ namespace dsm{
     {
     public:
         static std::vector<uint8_t> domain_average_filter2d(const std::vector<uint8_t>& input, size_t width, size_t height, int radius);
+        static std::vector<uint8_t> median_filter2d(const std::vector<uint8_t>& input, size_t width, size_t height, int radius);
+        
     };
 
 

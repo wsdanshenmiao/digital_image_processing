@@ -13,10 +13,11 @@
 #include <chrono>
 #include <filesystem>
 
-std::vector<uint8_t> test_image_filter_cuda(const std::vector<uint8_t>& img_data, int width, int height, int channels)
+std::vector<uint8_t> test_image_filter_cuda(const std::vector<uint8_t>& img_data, int width, int height)
 {
     std::vector<uint8_t> output_data{};
-    output_data = dsm::image_filter_cuda::domain_average_filter2d(img_data, width, height, 2);
+    // output_data = dsm::image_filter_cuda::domain_average_filter2d(img_data, width, height, 2);
+    output_data = dsm::image_filter_cuda::median_filter2d(img_data, width, height, 2);
     return output_data;
 }
 
@@ -34,12 +35,17 @@ void test_image(const std::string& filepath, int run_count)
     uint32_t size = static_cast<uint32_t>(width * height * channels);
     std::vector<uint8_t> img_data_vec(size);
     std::copy(img_data, img_data + size, img_data_vec.begin());
+    std::vector<uint8_t> luminance(size / 3);
+    for(int i = 0; i < size; i += 3){
+        luminance[i / 3] = (uint8_t)(0.299f * img_data_vec[i] + 0.587f * img_data_vec[i + 1] + 0.114f * img_data_vec[i + 2]);
+    }
 
     auto start = std::chrono::high_resolution_clock::now();
 
     std::vector<uint8_t> output_data{};
     for(int i = 0; i < run_count; ++i){
-        output_data = test_image_filter_cuda(img_data_vec, width, height, channels);
+        output_data = test_image_filter_cuda(luminance, width, height);
+        channels = 1;
     }
 
     auto end = std::chrono::high_resolution_clock::now();
@@ -60,7 +66,7 @@ void test_image(const std::string& filepath, int run_count)
 
 int main()
 {
-    test_image("asset/madoka_homura.jpg", 10);
+    test_image("asset/madoka_homura.jpg", 1);
 
     return 0;
 }

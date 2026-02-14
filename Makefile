@@ -15,7 +15,7 @@ OBJS = $(patsubst %.cpp, $(BUILD_DIR)/%.o, $(SRC))
 else
 
 CXX = nvcc
-CXXFLAGS = -g -Iinclude -Ithirdparty
+CXXFLAGS = -g -Iinclude -Ithirdparty --extended-lambda
 
 SRC = test/gpu_test.cu $(wildcard src/cuda/*.cu)
 BUILD_DIR = build_gpu
